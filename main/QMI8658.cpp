@@ -20,12 +20,14 @@ QMI8658::QMI8658()
 {
   mDevHandle = NULL;
   mBusHandle = NULL;
-  __fifo_buffer = new uint8_t[1536]; // Maximalgröße FIFO
+  mFifoBuffer = new uint8_t[1536]; // Maximalgröße FIFO
 }
 
-esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz, gpio_num_t aIrqPin, bool ReInit)
+esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz, 
+gpio_num_t aIrqPin1, gpio_num_t aIrqPin2,bool ReInit)
 {
-  __irq = aIrqPin;
+  mIrqPin1 = aIrqPin1;
+  mIrqPin2 = aIrqPin2;
   esp_err_t ret = ESP_OK;
   mBusHandle = aBusHandle;
   if (mDevHandle == NULL || ReInit)
@@ -80,7 +82,7 @@ esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, ui
     ret = ReadRegister(QMI8658_REG_DQW_L, buffer, 3);
     if (ret != ESP_OK)
       return ret;
-    revisionID = buffer[0] | (uint32_t)(buffer[1] << 8) | (uint32_t)(buffer[2] << 16);
+    mRevisionID = buffer[0] | (uint32_t)(buffer[1] << 8) | (uint32_t)(buffer[2] << 16);
     ESP_LOGI(TAG, "FW Version :0x%02X%02X%02X", buffer[0], buffer[1], buffer[2]);
 
     ret = ReadRegister(QMI8658_REG_DVX_L, usid, 6);
@@ -96,7 +98,7 @@ esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, ui
 QMI8658::~QMI8658(void)
 {
   Close();
-  delete[] __fifo_buffer;
+  delete[] mFifoBuffer;
 }
 
 void QMI8658::Close()
@@ -289,15 +291,15 @@ uint32_t QMI8658::GetTimestamp(esp_err_t *aErr)
     return 0;
   timestamp = (uint32_t)(((uint32_t)buffer[2] << 16) |
                          ((uint32_t)buffer[1] << 8) | buffer[0]);
-  if (timestamp > lastTimestamp)
+  if (timestamp > mLastTimestamp)
   {
-    lastTimestamp = timestamp;
+    mLastTimestamp = timestamp;
   }
   else
   {
-    lastTimestamp = (timestamp + 0x1000000 - lastTimestamp);
+    mLastTimestamp = (timestamp + 0x1000000 - mLastTimestamp);
   }
-  return lastTimestamp;
+  return mLastTimestamp;
 }
 
 float QMI8658::GetTemperature_C(esp_err_t *aErr)
@@ -319,12 +321,12 @@ esp_err_t QMI8658::EnableINT(IntPin pin, bool enable)
   uint8_t DisableMask = pin == INTERRUPT_PIN_1 ? 0xFE : 0xFD;
   if (enable)
   {
-    __irq_enable_mask = __irq_enable_mask | EnableMask;
+    mIrqEnableMask = mIrqEnableMask | EnableMask;
     ret = SetRegisterBit(QMI8658_REG_CTRL1, BitPos);
   }
   else
   {
-    __irq_enable_mask = __irq_enable_mask & DisableMask;
+    mIrqEnableMask = mIrqEnableMask & DisableMask;
     ret = ClrRegisterBit(QMI8658_REG_CTRL1, BitPos);
   }
   return ret;
@@ -366,16 +368,16 @@ esp_err_t QMI8658::ConfigAccelerometer(AccelRange range, AccelODR odr, LpfMode l
   // Here's a bit of an algorithm to calculate DPS/(ADC tick) based on that
   // 2-bit value:
   case ACC_RANGE_2G:
-    accelScales = 2.0 / 32768.0;
+    mAccelScales = 2.0 / 32768.0;
     break;
   case ACC_RANGE_4G:
-    accelScales = 4.0 / 32768.0;
+    mAccelScales = 4.0 / 32768.0;
     break;
   case ACC_RANGE_8G:
-    accelScales = 8.0 / 32768.0;
+    mAccelScales = 8.0 / 32768.0;
     break;
   case ACC_RANGE_16G:
-    accelScales = 16.0 / 32768.0;
+    mAccelScales = 16.0 / 32768.0;
     break;
   }
 
@@ -438,25 +440,25 @@ esp_err_t QMI8658::ConfigGyroscope(GyroRange range, GyroODR odr, LpfMode lpfOdr)
   // Here's a bit of an algorithm to calculate DPS/(ADC tick) based on that
   // 2-bit value:
   case GYR_RANGE_16DPS:
-    gyroScales = 16.0 / 32768.0;
+    mGyroScales = 16.0 / 32768.0;
     break;
   case GYR_RANGE_32DPS:
-    gyroScales = 32.0 / 32768.0;
+    mGyroScales = 32.0 / 32768.0;
     break;
   case GYR_RANGE_64DPS:
-    gyroScales = 64.0 / 32768.0;
+    mGyroScales = 64.0 / 32768.0;
     break;
   case GYR_RANGE_128DPS:
-    gyroScales = 128.0 / 32768.0;
+    mGyroScales = 128.0 / 32768.0;
     break;
   case GYR_RANGE_256DPS:
-    gyroScales = 256.0 / 32768.0;
+    mGyroScales = 256.0 / 32768.0;
     break;
   case GYR_RANGE_512DPS:
-    gyroScales = 512.0 / 32768.0;
+    mGyroScales = 512.0 / 32768.0;
     break;
   case GYR_RANGE_1024DPS:
-    gyroScales = 1024.0 / 32768.0;
+    mGyroScales = 1024.0 / 32768.0;
     break;
   }
 
@@ -523,7 +525,7 @@ esp_err_t QMI8658::ConfigFIFO(FIFO_Mode mode, FIFO_Samples samples, IntPin pin, 
     ESP_LOGE(TAG, "Reset fifo failed!");
   }
 
-  __fifo_interrupt = true;
+  mFifoInterrupt = true;
 
   switch (pin)
   {
@@ -539,15 +541,15 @@ esp_err_t QMI8658::ConfigFIFO(FIFO_Mode mode, FIFO_Samples samples, IntPin pin, 
     break;
   case INTERRUPT_PIN_DISABLE:
     // Saves whether the fifo interrupt pin is enabled
-    __fifo_interrupt = false;
+    mFifoInterrupt = false;
     break;
   default:
     break;
   }
 
   // Set fifo mode and samples len
-  __fifo_mode = (samples << 2) | mode;
-  ret = WriteRegister8(QMI8658_REG_FIFO_CTRL, __fifo_mode);
+  mFifoMode = (samples << 2) | mode;
+  ret = WriteRegister8(QMI8658_REG_FIFO_CTRL, mFifoMode);
   if (ret != ESP_OK)
     return ret;
 
@@ -612,13 +614,13 @@ esp_err_t QMI8658::ConfigFIFO(FIFO_Mode mode, FIFO_Samples samples, IntPin pin, 
 
 uint16_t QMI8658::ReadFromFifo(IMUdata *acc, uint16_t accLength, IMUdata *gyro, uint16_t gyrLength)
 {
-  if (__fifo_mode == FIFO_MODE_BYPASS)
+  if (mFifoMode == FIFO_MODE_BYPASS)
   {
     ESP_LOGE(TAG, "FIFO is not configured.");
     return 0;
   }
 
-  if (!__gyro_enabled && !__accel_enabled)
+  if (!mGyroEnabled && !mAccelEnabled)
   {
     ESP_LOGE(TAG, "Sensor not enabled.");
     return 0;
@@ -630,13 +632,13 @@ uint16_t QMI8658::ReadFromFifo(IMUdata *acc, uint16_t accLength, IMUdata *gyro, 
     return 0;
   }
 
-  if (!__fifo_buffer)
+  if (!mFifoBuffer)
   {
     ESP_LOGE(TAG, "FIFO buffer is NULL");
     return 0;
   }
 
-  uint8_t enabled_sensor_count = (__accel_enabled && __gyro_enabled) ? 2 : 1;
+  uint8_t enabled_sensor_count = (mAccelEnabled && mGyroEnabled) ? 2 : 1;
   uint16_t samples_per_sensor = data_bytes / (6 * enabled_sensor_count);
   uint16_t total_samples = samples_per_sensor * enabled_sensor_count;
 
@@ -647,21 +649,21 @@ uint16_t QMI8658::ReadFromFifo(IMUdata *acc, uint16_t accLength, IMUdata *gyro, 
 
   for (uint16_t i = 0; i < total_samples; ++i)
   {
-    auto data = reinterpret_cast<int16_t *>(&__fifo_buffer[i * 6]);
+    auto data = reinterpret_cast<int16_t *>(&mFifoBuffer[i * 6]);
     int16_t x = data[0];
     int16_t y = data[1];
     int16_t z = data[2];
 
-    if (__accel_enabled && __gyro_enabled)
+    if (mAccelEnabled && mGyroEnabled)
     {
       if (i % 2 == 0)
       {
         // Accel
         if (accel_index < accLength)
         {
-          acc[accel_index].x = x * accelScales;
-          acc[accel_index].y = y * accelScales;
-          acc[accel_index].z = z * accelScales;
+          acc[accel_index].x = x * mAccelScales;
+          acc[accel_index].y = y * mAccelScales;
+          acc[accel_index].z = z * mAccelScales;
           accel_index++;
         }
       }
@@ -670,30 +672,30 @@ uint16_t QMI8658::ReadFromFifo(IMUdata *acc, uint16_t accLength, IMUdata *gyro, 
         // Gyro
         if (gyro_index < gyrLength)
         {
-          gyro[gyro_index].x = x * gyroScales;
-          gyro[gyro_index].y = y * gyroScales;
-          gyro[gyro_index].z = z * gyroScales;
+          gyro[gyro_index].x = x * mGyroScales;
+          gyro[gyro_index].y = y * mGyroScales;
+          gyro[gyro_index].z = z * mGyroScales;
           gyro_index++;
         }
       }
     }
-    else if (__accel_enabled)
+    else if (mAccelEnabled)
     {
       if (accel_index < accLength)
       {
-        acc[accel_index].x = x * accelScales;
-        acc[accel_index].y = y * accelScales;
-        acc[accel_index].z = z * accelScales;
+        acc[accel_index].x = x * mAccelScales;
+        acc[accel_index].y = y * mAccelScales;
+        acc[accel_index].z = z * mAccelScales;
         accel_index++;
       }
     }
-    else if (__gyro_enabled)
+    else if (mGyroEnabled)
     {
       if (gyro_index < gyrLength)
       {
-        gyro[gyro_index].x = x * gyroScales;
-        gyro[gyro_index].y = y * gyroScales;
-        gyro[gyro_index].z = z * gyroScales;
+        gyro[gyro_index].x = x * mGyroScales;
+        gyro[gyro_index].y = y * mGyroScales;
+        gyro[gyro_index].z = z * mGyroScales;
         gyro_index++;
       }
     }
@@ -706,7 +708,7 @@ esp_err_t QMI8658::EnableAccelerometer()
   esp_err_t ret = SetRegisterBit(QMI8658_REG_CTRL7, 0);
   if (ret != ESP_OK)
     return ret;
-  __accel_enabled = true;
+  mAccelEnabled = true;
   return ret;
 }
 
@@ -715,18 +717,18 @@ esp_err_t QMI8658::DisableAccelerometer()
   esp_err_t ret = ClrRegisterBit(QMI8658_REG_CTRL7, 0);
   if (ret != ESP_OK)
     return ret;
-  __accel_enabled = false;
+  mAccelEnabled = false;
   return ret;
 }
 
 bool QMI8658::IsEnableAccelerometer()
 {
-  return __accel_enabled;
+  return mAccelEnabled;
 }
 
 bool QMI8658::IsEnableGyroscope()
 {
-  return __gyro_enabled;
+  return mGyroEnabled;
 }
 
 esp_err_t QMI8658::EnableGyroscope()
@@ -734,7 +736,7 @@ esp_err_t QMI8658::EnableGyroscope()
   esp_err_t ret = SetRegisterBit(QMI8658_REG_CTRL7, 1);
   if (ret != ESP_OK)
     return ret;
-  __gyro_enabled = true;
+  mGyroEnabled = true;
   return ret;
 }
 
@@ -743,13 +745,13 @@ esp_err_t QMI8658::DisableGyroscope()
   esp_err_t ret = ClrRegisterBit(QMI8658_REG_CTRL7, 1);
   if (ret != ESP_OK)
     return ret;
-  __gyro_enabled = false;
+  mGyroEnabled = false;
   return ret;
 }
 
 esp_err_t QMI8658::GetAccelRaw(int16_t *rawBuffer)
 {
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
   {
     return false;
   }
@@ -766,7 +768,7 @@ esp_err_t QMI8658::GetAccelRaw(int16_t *rawBuffer)
 
 esp_err_t QMI8658::GetAccelerometer(float &x, float &y, float &z)
 {
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
   {
     return false;
   }
@@ -774,25 +776,25 @@ esp_err_t QMI8658::GetAccelerometer(float &x, float &y, float &z)
   esp_err_t ret = GetAccelRaw(raw);
   if (ret != ESP_OK)
     return ret;
-  x = raw[0] * accelScales;
-  y = raw[1] * accelScales;
-  z = raw[2] * accelScales;
+  x = raw[0] * mAccelScales;
+  y = raw[1] * mAccelScales;
+  z = raw[2] * mAccelScales;
   return ret;
 }
 
 float QMI8658::GetAccelerometerScales()
 {
-  return accelScales;
+  return mAccelScales;
 }
 
 float QMI8658::GetGyroscopeScales()
 {
-  return gyroScales;
+  return mGyroScales;
 }
 
 esp_err_t QMI8658::GetGyroRaw(int16_t *rawBuffer)
 {
-  if (!__gyro_enabled)
+  if (!mGyroEnabled)
   {
     return false;
   }
@@ -808,7 +810,7 @@ esp_err_t QMI8658::GetGyroRaw(int16_t *rawBuffer)
 
 esp_err_t QMI8658::GetGyroscope(float &x, float &y, float &z)
 {
-  if (!__gyro_enabled)
+  if (!mGyroEnabled)
   {
     return false;
   }
@@ -816,17 +818,17 @@ esp_err_t QMI8658::GetGyroscope(float &x, float &y, float &z)
   esp_err_t ret = GetGyroRaw(raw);
   if (ret != ESP_OK)
     return ret;
-  x = raw[0] * gyroScales;
-  y = raw[1] * gyroScales;
-  z = raw[2] * gyroScales;
+  x = raw[0] * mGyroScales;
+  y = raw[1] * mGyroScales;
+  z = raw[2] * mGyroScales;
   return ret;
 }
 
 bool QMI8658::GetDataReady(esp_err_t *aErr)
 {
-  if ((__irq_enable_mask & 0x03) && (__irq != GPIO_NUM_NC))
+  if ((mIrqEnableMask & 0x03) && (mIrqPin1 != GPIO_NUM_NC))
   {
-    if (gpio_get_level(__irq))
+    if (gpio_get_level(mIrqPin1))
     {
       return false;
     }
@@ -838,15 +840,15 @@ bool QMI8658::GetDataReady(esp_err_t *aErr)
     return GetRegisterBit(QMI8658_REG_STATUS_INT, 1, aErr);
   case ASYNC_MODE:
     // TODO: When Accel and Gyro are configured with different rates, this will always be false
-    if (__accel_enabled & __gyro_enabled)
+    if (mAccelEnabled & mGyroEnabled)
     {
       return ReadRegister8(QMI8658_REG_STATUS0, aErr) & 0x03;
     }
-    else if (__gyro_enabled)
+    else if (mGyroEnabled)
     {
       return ReadRegister8(QMI8658_REG_STATUS0, aErr) & 0x02;
     }
-    else if (__accel_enabled)
+    else if (mAccelEnabled)
     {
       return ReadRegister8(QMI8658_REG_STATUS0, aErr) & 0x01;
     }
@@ -928,7 +930,7 @@ uint16_t QMI8658::ReadFromFifo(esp_err_t *aErr)
   uint8_t status[2];
   uint16_t fifo_bytes = 0;
 
-  if ((__irq != -1) && __fifo_interrupt)
+  if ((mIrqPin1 != GPIO_NUM_NC) && mFifoInterrupt)
   {
     /*
      * Once the corresponds INT pin is configured to the push-pull mode, the FIFO watermark interrupt can be seen on the
@@ -936,7 +938,7 @@ uint16_t QMI8658::ReadFromFifo(esp_err_t *aErr)
      * drop to low level as long as the FIFO filled level is lower than the configured FIFO watermark after reading out by host
      * and FIFO_RD_MODE is cleared.
      */
-    if (gpio_get_level(__irq) == 0)
+    if (gpio_get_level(mIrqPin1) == 0)
     {
       return false;
     }
@@ -992,7 +994,7 @@ uint16_t QMI8658::ReadFromFifo(esp_err_t *aErr)
     return ret;
   }
   // 4.Read from the FIFO_DATA register per FIFO_Sample_Count.
-  ret = ReadRegister(QMI8658_REG_FIFO_DATA, __fifo_buffer, fifo_bytes);
+  ret = ReadRegister(QMI8658_REG_FIFO_DATA, mFifoBuffer, fifo_bytes);
   if (ret != ESP_OK)
   {
     ESP_LOGE(TAG, "Request FIFO data failed !");
@@ -1000,7 +1002,7 @@ uint16_t QMI8658::ReadFromFifo(esp_err_t *aErr)
   }
 
   // 5.Disable the FIFO Read Mode by setting FIFO_CTRL.FIFO_rd_mode to 0. New data will be filled into FIFO afterwards.
-  ret = WriteRegister8(QMI8658_REG_FIFO_CTRL, __fifo_mode);
+  ret = WriteRegister8(QMI8658_REG_FIFO_CTRL, mFifoMode);
   if (ret != ESP_OK)
   {
     ESP_LOGE(TAG, "Clear FIFO flag failed!");
@@ -1161,7 +1163,7 @@ esp_err_t QMI8658::ClearPedometerCounter()
 // The Pedometer can only work in Non-SyncSample mode
 esp_err_t QMI8658::EnablePedometer(IntPin pin)
 {
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
     return ESP_ERR_INVALID_ARG;
   esp_err_t ret;
   switch (pin)
@@ -1183,7 +1185,7 @@ esp_err_t QMI8658::EnablePedometer(IntPin pin)
 
 esp_err_t QMI8658::DisablePedometer()
 {
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
     return ESP_ERR_INVALID_ARG;
   return ClrRegisterBit(QMI8658_REG_CTRL8, 4);
 }
@@ -1334,7 +1336,7 @@ esp_err_t QMI8658::ConfigTap(uint8_t priority, uint8_t peakWindow, uint16_t tapW
 esp_err_t QMI8658::EnableTap(IntPin pin)
 {
   esp_err_t ret;
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
     return ESP_ERR_INVALID_ARG;
   switch (pin)
   {
@@ -1537,7 +1539,7 @@ esp_err_t QMI8658::ConfigMotion(
 esp_err_t QMI8658::EnableMotionDetect(IntPin pin)
 {
   esp_err_t ret;
-  if (!__accel_enabled)
+  if (!mAccelEnabled)
     return ESP_ERR_INVALID_ARG;
   switch (pin)
   {
@@ -1662,7 +1664,7 @@ void QMI8658::GetChipUsid(uint8_t *buffer, uint8_t length)
 
 uint32_t QMI8658::GetChipFirmwareVersion()
 {
-  return revisionID;
+  return mRevisionID;
 }
 
 /**
@@ -1733,7 +1735,7 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
       result |= STATUS0_GYRO_DATA_READY;
       if (eventGyroDataReady)
         eventGyroDataReady();
-      __gDataReady = true;
+      mgDataReady = true;
     }
     // Accelerometer new data available
     // 0: No updates since last read.
@@ -1743,7 +1745,7 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
       result |= STATUS0_ACCEL_DATA_READY;
       if (eventAccelDataReady)
         eventAccelDataReady();
-      __aDataReady = true;
+      maDataReady = true;
     }
   }
 

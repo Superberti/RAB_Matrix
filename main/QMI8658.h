@@ -29,21 +29,22 @@ private:
   i2c_master_bus_handle_t mBusHandle;
   i2c_master_dev_handle_t mDevHandle;
 
-  float accelScales, gyroScales;
-  uint32_t lastTimestamp = 0;
+  float mAccelScales, mGyroScales;
+  uint32_t mLastTimestamp = 0;
   uint8_t sampleMode = ASYNC_MODE;
-  bool __accel_enabled = false;
-  bool __gyro_enabled = false;
-  uint32_t revisionID;
+  bool mAccelEnabled = false;
+  bool mGyroEnabled = false;
+  uint32_t mRevisionID;
   uint8_t usid[6];
-  bool __gDataReady = false;
-  bool __aDataReady = false;
-  gpio_num_t __irq = GPIO_NUM_NC;
-  uint8_t __irq_enable_mask = false;
-  uint8_t __fifo_mode;
-  bool __fifo_interrupt = false;
+  bool mgDataReady = false;
+  bool maDataReady = false;
+  gpio_num_t mIrqPin1 = GPIO_NUM_NC;
+  gpio_num_t mIrqPin2 = GPIO_NUM_NC;
+  uint8_t mIrqEnableMask = false;
+  uint8_t mFifoMode;
+  bool mFifoInterrupt = false;
 
-  uint8_t *__fifo_buffer = NULL;
+  uint8_t *mFifoBuffer = NULL;
 
   EventCallBack_t eventWomEvent = NULL;
   EventCallBack_t eventTagEvent = NULL;
@@ -250,7 +251,8 @@ public:
   };
 
   QMI8658();
-  esp_err_t Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz, gpio_num_t aIrqPin, bool ReInit = false);
+  esp_err_t Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz,
+                 gpio_num_t aIrqPin1, gpio_num_t aIrqPin2, bool ReInit = false);
   void Close();
   ~QMI8658(void);
   uint8_t GetChipID(esp_err_t *aErr = NULL);

@@ -43,7 +43,7 @@
 #define PIN_SCL_BUS0 GPIO_NUM_12
 #define QMI_INT1 GPIO_NUM_10
 #define QMI_INT2 GPIO_NUM_13
-#define QME8658_ADDRESS 0x6a // 106
+#define QME8658_ADDRESS 0x6b // 107
 
 led_strip_handle_t led_strip;
 
@@ -109,12 +109,109 @@ void LEDMatrix::Run()
   }
 
   // Init Gyroskop
-  ret = Qmi->Init(i2c_bus_h_0, QME8658_ADDRESS, I2C_FREQ_HZ, QMI_INT1);
+  ret = Qmi->Init(i2c_bus_h_0, QME8658_ADDRESS, I2C_FREQ_HZ, QMI_INT1, QMI_INT2);
   if (ret != ESP_OK)
   {
     error("Fehler beim Initialisieren des QME8658: %d.", ret);
   }
 
+  if (Qmi->SelfTestAccel() == ESP_OK)
+  {
+    ESP_LOGI(TAG, "Accelerometer self-test successful");
+  }
+  else
+  {
+    ESP_LOGE(TAG, "Accelerometer self-test failed!");
+  }
+
+  if (Qmi->SelfTestGyro() == ESP_OK)
+  {
+    ESP_LOGI(TAG, "Gyroscope self-test successful");
+  }
+  else
+  {
+    ESP_LOGE(TAG, "Gyroscope self-test failed!");
+  }
+
+  ret = Qmi->ConfigAccelerometer(
+      /*
+       * ACC_RANGE_2G
+       * ACC_RANGE_4G
+       * ACC_RANGE_8G
+       * ACC_RANGE_16G
+       * */
+      QMI8658::ACC_RANGE_4G,
+      /*
+       * ACC_ODR_1000H
+       * ACC_ODR_500Hz
+       * ACC_ODR_250Hz
+       * ACC_ODR_125Hz
+       * ACC_ODR_62_5Hz
+       * ACC_ODR_31_25Hz
+       * ACC_ODR_LOWPOWER_128Hz
+       * ACC_ODR_LOWPOWER_21Hz
+       * ACC_ODR_LOWPOWER_11Hz
+       * ACC_ODR_LOWPOWER_3H
+       * */
+      QMI8658::ACC_ODR_1000Hz,
+      /*
+       *  LPF_MODE_0     //2.66% of ODR
+       *  LPF_MODE_1     //3.63% of ODR
+       *  LPF_MODE_2     //5.39% of ODR
+       *  LPF_MODE_3     //13.37% of ODR
+       *  LPF_OFF        // OFF Low-Pass Fitter
+       * */
+      QMI8658::LPF_MODE_0);
+  if (ret != ESP_OK)
+    ESP_LOGI(TAG, "ConfigAccelerometer failed with error code: %d", ret);
+
+  ret = Qmi->ConfigGyroscope(
+      /*
+       * GYR_RANGE_16DPS
+       * GYR_RANGE_32DPS
+       * GYR_RANGE_64DPS
+       * GYR_RANGE_128DPS
+       * GYR_RANGE_256DPS
+       * GYR_RANGE_512DPS
+       * GYR_RANGE_1024DPS
+       * */
+      QMI8658::GYR_RANGE_64DPS,
+      /*
+       * GYR_ODR_7174_4Hz
+       * GYR_ODR_3587_2Hz
+       * GYR_ODR_1793_6Hz
+       * GYR_ODR_896_8Hz
+       * GYR_ODR_448_4Hz
+       * GYR_ODR_224_2Hz
+       * GYR_ODR_112_1Hz
+       * GYR_ODR_56_05Hz
+       * GYR_ODR_28_025H
+       * */
+      QMI8658::GYR_ODR_896_8Hz,
+      /*
+       *  LPF_MODE_0     //2.66% of ODR
+       *  LPF_MODE_1     //3.63% of ODR
+       *  LPF_MODE_2     //5.39% of ODR
+       *  LPF_MODE_3     //13.37% of ODR
+       *  LPF_OFF        // OFF Low-Pass Fitter
+       * */
+      QMI8658::LPF_MODE_3);
+  if (ret != ESP_OK)
+    ESP_LOGE(TAG, "ConfigGyroscope failed with error code: %d", ret);
+  /*
+   * If both the accelerometer and gyroscope sensors are turned on at the same time,
+   * the output frequency will be based on the gyroscope output frequency.
+   * The example configuration is 896.8HZ output frequency,
+   * so the acceleration output frequency is also limited to 896.8HZ
+   * */
+  ret = Qmi->EnableGyroscope();
+  if (ret != ESP_OK)
+    ESP_LOGI(TAG, "EnableGyroscope failed with error code: %d", ret);
+  ret = Qmi->EnableAccelerometer();
+  if (ret != ESP_OK)
+    ESP_LOGE(TAG, "EnableAccelerometer failed with error code: %d", ret);
+  IMUdata Accel;
+  IMUdata Gyro;
   for (;;)
   {
     for (int i = 0; i < NUM_PIXEL; i++)
@@ -126,6 +223,26 @@ void LEDMatrix::Run()
       led_strip_set_pixel(led_strip, i, 50, 50, 50);
       led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (Qmi->GetDataReady())
+    {
+      ret = Qmi->GetAccelerometer(Accel.x, Accel.y, Accel.z);
+      if (ret == ESP_OK)
+      {
+        ESP_LOGI(TAG, "ACCEL:  %f  %f  %f\r\n", Accel.x, Accel.y, Accel.z);
+      }
+      else
+        ESP_LOGE(TAG, "GetAccelerometer failed with error code: %d", ret);
+
+      ret = Qmi->GetGyroscope(Gyro.x, Gyro.y, Gyro.z);
+      if (ret == ESP_OK)
+      {
+        ESP_LOGI(TAG, "GYRO:  %f  %f  %f\r\n", Gyro.x, Gyro.y, Gyro.z);
+      }
+      else
+        ESP_LOGE(TAG, "GetGyroscope failed with error code: %d", ret);
+      ESP_LOGI(TAG, "\t\t>      %lu   %.2f ℃\n", Qmi->GetTimestamp(), Qmi->GetTemperature_C());
+      ESP_LOGI(TAG, "\r\n");
     }
   }
 }
@@ -150,8 +267,8 @@ esp_err_t LEDMatrix::InitGPIO()
   ESP_RETURN_ON_ERROR(gpio_config(&ConfigOutput), TAG, "Fehler bei Init output GPIO");
 */
   // Inputs
-  
-  const uint64_t InputBitMask = (1ULL << QMI_INT1) |  (1ULL << QMI_INT2);
+
+  const uint64_t InputBitMask = (1ULL << QMI_INT1) | (1ULL << QMI_INT2);
   gpio_config_t ConfigInput = {};
   ConfigInput.pin_bit_mask = InputBitMask;
   ConfigInput.mode = GPIO_MODE_INPUT;
@@ -159,7 +276,7 @@ esp_err_t LEDMatrix::InitGPIO()
   ConfigInput.pull_down_en = GPIO_PULLDOWN_DISABLE;
   ConfigInput.intr_type = GPIO_INTR_POSEDGE;
   ESP_RETURN_ON_ERROR(gpio_config(&ConfigInput), TAG, "Fehler bei Init input GPIO");
-  
+
   return ESP_OK;
 }
 
