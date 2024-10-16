@@ -23,9 +23,10 @@ QMI8658::QMI8658()
   mFifoBuffer = new uint8_t[1536]; // Maximalgröße FIFO
 }
 
-esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz, 
-gpio_num_t aIrqPin1, gpio_num_t aIrqPin2,bool ReInit)
+esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, uint32_t aI2CSpeed_Hz,
+                        gpio_num_t aIrqPin1, gpio_num_t aIrqPin2, bool ReInit)
 {
+  ESP_LOGI(TAG, "Initializing QMI8658...");
   mIrqPin1 = aIrqPin1;
   mIrqPin2 = aIrqPin2;
   esp_err_t ret = ESP_OK;
@@ -39,7 +40,10 @@ gpio_num_t aIrqPin1, gpio_num_t aIrqPin2,bool ReInit)
     conf.flags.disable_ack_check = false;
     ret = i2c_master_bus_add_device(mBusHandle, &conf, &mDevHandle);
     if (ret != ESP_OK)
+    {
+      ESP_LOGE(TAG, "i2c_master_bus_add_device failed!");
       return ret;
+    }
 
     uint8_t buffer[6] = {0};
 
@@ -51,7 +55,10 @@ gpio_num_t aIrqPin1, gpio_num_t aIrqPin2,bool ReInit)
 
     ret = Reset();
     if (ret != ESP_OK)
+    {
+      ESP_LOGE(TAG, "Reset failed!");
       return ret;
+    }
 
     uint8_t id = WhoAmI();
     if (id != QMI8658_REG_WHOAMI_DEFAULT)
@@ -72,12 +79,18 @@ gpio_num_t aIrqPin1, gpio_num_t aIrqPin2,bool ReInit)
     // Use STATUS_INT.bit7 as CTRL9 handshake
     ret = WriteRegister8(QMI8658_REG_CTRL8, 0x80);
     if (ret != ESP_OK)
+    {
+      ESP_LOGE(TAG, "WriteRegister8 failed!");
       return ret;
+    }
 
     // Get firmware version and usid
     ret = WriteCommand(CTRL_CMD_COPY_USID);
     if (ret != ESP_OK)
+    {
+      ESP_LOGE(TAG, "WriteCommand failed!");
       return ret;
+    }
 
     ret = ReadRegister(QMI8658_REG_DQW_L, buffer, 3);
     if (ret != ESP_OK)
@@ -158,7 +171,7 @@ esp_err_t QMI8658::WriteCommand(CommandTable cmd, uint32_t wait_ms)
 esp_err_t QMI8658::ReadRegister(uint8_t aStartReg, uint8_t *aReadBuf, uint8_t aSize)
 {
   esp_err_t ret;
-  ret = i2c_master_transmit_receive(mDevHandle, &aStartReg, 1, aReadBuf, 2, DEV_TIMEOUT);
+  ret = i2c_master_transmit_receive(mDevHandle, &aStartReg, 1, aReadBuf, aSize, DEV_TIMEOUT);
   if (ret != ESP_OK)
     ESP_LOGE("ADS1015::ReadRegister", "I2C error no.: %d", ret);
   return ret;
@@ -221,8 +234,11 @@ esp_err_t QMI8658::Reset(bool waitResult)
       if (ret == ESP_OK && val == QMI8658_REG_RST_RESULT_VAL)
       {
         // EN.ADDR_AI
-        SetRegisterBit(QMI8658_REG_CTRL1, 6);
-        return true;
+        ret = SetRegisterBit(QMI8658_REG_CTRL1, 6);
+        if (ret != ESP_OK)
+          return ret;
+        else
+          return ESP_OK;
       }
       vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -231,9 +247,7 @@ esp_err_t QMI8658::Reset(bool waitResult)
   }
 
   // EN.ADDR_AI
-  SetRegisterBit(QMI8658_REG_CTRL1, 6);
-
-  return true;
+  return SetRegisterBit(QMI8658_REG_CTRL1, 6);
 }
 
 int64_t QMI8658::GetTime_us()
@@ -1561,10 +1575,7 @@ esp_err_t QMI8658::EnableMotionDetect(IntPin pin)
   ret = SetRegisterBit(QMI8658_REG_CTRL8, 2);
   if (ret != ESP_OK)
     return ret;
-  ret = SetRegisterBit(QMI8658_REG_CTRL8, 3);
-  if (ret != ESP_OK)
-    return ret;
-  return true;
+  return  SetRegisterBit(QMI8658_REG_CTRL8, 3);
 }
 
 esp_err_t QMI8658::DisableMotionDetect()
@@ -2049,7 +2060,7 @@ esp_err_t QMI8658::SelfTestAccel()
     ESP_LOGI(TAG, "Accelerometer is not working properly.");
     return ESP_ERR_INVALID_RESPONSE;
   }
-  return true;
+  return ESP_OK;
 }
 
 esp_err_t QMI8658::SelfTestGyro()
