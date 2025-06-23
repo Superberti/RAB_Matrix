@@ -23,7 +23,17 @@ protected:
   esp_err_t InitI2C(i2c_port_t aPort, gpio_num_t aSDA_Pin, gpio_num_t aSCL_Pin, i2c_master_bus_handle_t *aBusHandle);
   esp_err_t InitGPIO();
   void error(const char *format, ...);
-
+  /// @brief Zeichnet einen Buchstaben auf der 8x8 LED-Matrix
+  /// @param aChar Zeichen
+  /// @param r Rotanteil
+  /// @param g Grünanteil
+  /// @param b Blauanteil
+  void RenderChar(char aChar, uint8_t r, uint8_t g, uint8_t b);
+  const uint8_t* getImage(uint8_t ch);
+  uint8_t reverseBits(uint8_t b);
+  void rotateChar90(const uint8_t *image, uint8_t newb[8]);
+  void rotateChar270(const uint8_t *image, uint8_t newb[8]);
+  void SetMatrixPixel(uint8_t x, uint8_t y,uint8_t r, uint8_t g, uint8_t b);
 public:
   LEDMatrix();
   ~LEDMatrix();

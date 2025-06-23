@@ -28,6 +28,9 @@
 #include "rab.h"
 #include <led_strip.h>
 #include "QMI8658.h"
+#include "fonts_8x8.h"
+
+#define FONT8X8 font8x8_ic8x8u
 
 /*
  * Pindefinitionen:
@@ -38,6 +41,8 @@
 #define BLINK_GPIO GPIO_NUM_14
 #define TAG "RAB_MATRIX"
 #define NUM_PIXEL 64
+#define NUM_PIXEL_X 8
+#define NUM_PIXEL_Y 8
 #define I2C_FREQ_HZ 400000
 #define PIN_SDA_BUS0 GPIO_NUM_11
 #define PIN_SCL_BUS0 GPIO_NUM_12
@@ -45,6 +50,10 @@
 #define QMI_INT2 GPIO_NUM_13
 #define QME8658_ADDRESS 0x6b // 107
 
+const uint8_t ROTATION_0 = 0;   // wires at the left
+const uint8_t ROTATION_90 = 1;  // wires at the top
+const uint8_t ROTATION_180 = 2; // wires at the right
+const uint8_t ROTATION_270 = 3; // wires at the bottom
 led_strip_handle_t led_strip;
 
 extern "C"
@@ -67,7 +76,6 @@ void app_main_cpp()
 LEDMatrix::LEDMatrix()
 {
   i2c_bus_h_0 = NULL;
-  // Log auf eigene Funktion umbiegen
   Qmi = new QMI8658();
 }
 
@@ -100,7 +108,7 @@ void LEDMatrix::Run()
     error("Fehler beim Init des RMT-Devices: %d.", ret);
   }
 
-  bool QMI_OK=false;
+  bool QMI_OK = false;
   // Initialisierung I2C
   ESP_LOGI(TAG, "I2C init...");
   ret = InitI2C(I2C_NUM_0, PIN_SDA_BUS0, PIN_SCL_BUS0, &i2c_bus_h_0);
@@ -113,10 +121,10 @@ void LEDMatrix::Run()
   ret = Qmi->Init(i2c_bus_h_0, QME8658_ADDRESS, I2C_FREQ_HZ, QMI_INT1, QMI_INT2);
   if (ret != ESP_OK)
   {
-    ESP_LOGE(TAG,"Fehler beim Initialisieren des QME8658: %d.", ret);
+    ESP_LOGE(TAG, "Fehler beim Initialisieren des QME8658: %d.", ret);
   }
   else
-    QMI_OK=true;
+    QMI_OK = true;
   if (QMI_OK)
   {
     ESP_LOGI(TAG, "QMI setup...");
@@ -216,11 +224,15 @@ void LEDMatrix::Run()
     if (ret != ESP_OK)
       ESP_LOGE(TAG, "EnableAccelerometer failed with error code: %d", ret);
   }
+
   IMUdata Accel;
   IMUdata Gyro;
   ESP_LOGI(TAG, "Hauptschleife...");
+  const char *Anzeige = "Hallo, RAB *2025*";
+  int CharIndex = 0;
   for (;;)
   {
+    /*
     for (int i = 0; i < NUM_PIXEL; i++)
     {
       if (i > 0)
@@ -230,7 +242,13 @@ void LEDMatrix::Run()
       led_strip_set_pixel(led_strip, i, 50, 50, 50);
       led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    }*/
+    if (Anzeige[CharIndex] == 0)
+      CharIndex = 0;
+    RenderChar(Anzeige[CharIndex], 30, 30, 30);
+    CharIndex++;
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
     if (QMI_OK && Qmi->GetDataReady())
     {
       ret = Qmi->GetAccelerometer(Accel.x, Accel.y, Accel.z);
@@ -250,6 +268,7 @@ void LEDMatrix::Run()
         ESP_LOGE(TAG, "GetGyroscope failed with error code: %d", ret);
       ESP_LOGI(TAG, "\t\t>      %lu   %.2f ℃", Qmi->GetTimestamp(), Qmi->GetTemperature_C());
     }
+
   }
 }
 
@@ -291,7 +310,7 @@ esp_err_t LEDMatrix::InitI2C(i2c_port_t aPort, gpio_num_t aSDA_Pin, gpio_num_t a
   if (aPort > 1)
     return ESP_ERR_INVALID_ARG;
 
-  i2c_master_bus_config_t conf;
+  i2c_master_bus_config_t conf={};
   conf.i2c_port = aPort;
   conf.sda_io_num = aSDA_Pin;
   conf.scl_io_num = aSCL_Pin;
@@ -321,4 +340,85 @@ void LEDMatrix::error(const char *format, ...)
     // gpio_set_level(BOARD_LED, toggle);
     vTaskDelay(pdMS_TO_TICKS(20));
   }
+}
+
+const uint8_t *LEDMatrix::getImage(uint8_t ch)
+{
+  if (ch < 128)
+  {
+    return FONT8X8[ch];
+  }
+  if (ch >= 128 && ch < 160)
+  {
+    // miscellaneous
+    ch -= 128;
+    if (ch < sizeof(font8x8_misc) / 8)
+    {
+      return font8x8_misc[ch];
+    }
+    return FONT8X8[0]; // default
+  }
+  return FONT8X8[ch - 160 + 128];
+}
+
+uint8_t LEDMatrix::reverseBits(uint8_t b)
+{
+  uint8_t inv = 0;
+  for (int j = 0; j < 8; ++j)
+  {
+    inv <<= 1;
+    if (b & 0x1)
+      inv |= 1;
+    b >>= 1;
+  }
+  return inv;
+}
+
+void LEDMatrix::rotateChar90(const uint8_t *image, uint8_t newb[8])
+{
+  for (int i = 0; i < 8; ++i)
+  {
+    newb[i] = 0;
+    for (int j = 0; j < 8; ++j)
+    {
+      uint8_t b = image[j];
+      newb[i] |= (b & (1 << i)) ? 1 << (7 - j) : 0;
+    }
+  }
+}
+
+void LEDMatrix::rotateChar270(const uint8_t *image, uint8_t newb[8])
+{
+  for (int i = 0; i < 8; ++i)
+  {
+    newb[i] = 0;
+    for (int j = 0; j < 8; ++j)
+    {
+      uint8_t b = image[j];
+      newb[i] |= (b & (1 << (7 - i))) ? 1 << j : 0;
+    }
+  }
+}
+
+void LEDMatrix::RenderChar(char aChar, uint8_t r, uint8_t g, uint8_t b)
+{
+  led_strip_clear(led_strip);
+  const uint8_t *CharBitmap = getImage(aChar);
+  for (uint8_t x = 0; x < 8; x++)
+  {
+    for (uint8_t y = 0; y < 8; y++)
+    {
+      if (((const uint8_t *)CharBitmap)[x] & (1 << (7 - y)))
+        SetMatrixPixel(7 - x, 7 - y, r, g, b);
+    }
+  }
+  led_strip_refresh(led_strip);
+}
+
+void LEDMatrix::SetMatrixPixel(uint8_t x, uint8_t y, uint8_t r, uint8_t g, uint8_t b)
+{
+  if (x >= 8 || y >= 8)
+    return;
+  uint32_t LEDIndex = x * 8 + y;
+  led_strip_set_pixel(led_strip, LEDIndex, r, g, b);
 }

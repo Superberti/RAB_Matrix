@@ -46,16 +46,6 @@ private:
 
   uint8_t *mFifoBuffer = NULL;
 
-  EventCallBack_t eventWomEvent = NULL;
-  EventCallBack_t eventTagEvent = NULL;
-  EventCallBack_t eventPedometerEvent = NULL;
-  EventCallBack_t eventNoMotionEvent = NULL;
-  EventCallBack_t eventAnyMotionEvent = NULL;
-  EventCallBack_t eventSignificantMotion = NULL;
-  EventCallBack_t eventGyroDataReady = NULL;
-  EventCallBack_t eventAccelDataReady = NULL;
-  EventCallBack_t eventDataLocking = NULL;
-
   esp_err_t ReadRegister(uint8_t aStartReg, uint8_t *aReadBuf, uint8_t aSize);
   esp_err_t WriteRegister(uint8_t aStartReg, uint8_t *aWriteBuf, uint8_t aSize);
   esp_err_t WriteRegister(uint8_t reg, uint8_t norVal, uint8_t orVal);
@@ -314,15 +304,6 @@ public:
   void GetChipUsid(uint8_t *buffer, uint8_t length);
   uint32_t GetChipFirmwareVersion();
   uint16_t Update(esp_err_t *aErr);
-  void SetWakeupMotionEventCallBack(EventCallBack_t cb);
-  void SetTapEventCallBack(EventCallBack_t cb);
-  void SetPedometerEventCallBack(EventCallBack_t cb);
-  void SetNoMotionEventCallBack(EventCallBack_t cb);
-  void SetAnyMotionEventCallBack(EventCallBack_t cb);
-  void SetSignificantMotionEventCallBack(EventCallBack_t cb);
-  void SetGyroDataReadyCallBack(EventCallBack_t cb);
-  void SetAccelDataReadyEventCallBack(EventCallBack_t cb);
-  void SetDataLockingEventCallBack(EventCallBack_t cb);
   esp_err_t Calibration(uint16_t *gX_gain = NULL, uint16_t *gY_gain = NULL, uint16_t *gZ_gain = NULL);
   esp_err_t WriteCalibration(uint16_t gX_gain, uint16_t gY_gain, uint16_t gZ_gain);
   esp_err_t SelfTestAccel();

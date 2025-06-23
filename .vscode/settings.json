@@ -7,14 +7,14 @@
     "IDF_CCACHE_ENABLE": "1",
     "ESP_ROM_ELF_DIR": "c:\\Espressif\\tools\\esp-rom-elfs\\20240305/"
   },
-  "idf.espIdfPathWin": "c:\\Espressif\\v5.3.1\\esp-idf",
+  "idf.espIdfPathWin": "c:\\Espressif\\idf\\v5.4.1\\esp-idf",
   "idf.openOcdConfigs": [
     "interface/ftdi/esp32_devkitj_v1.cfg",
     "target/esp32s3.cfg"
   ],
-  "idf.portWin": "COM9",
+  "idf.portWin": "COM16",
   "idf.pythonBinPathWin": "c:\\Espressif\\python_env\\idf5.3_py3.11_env\\Scripts\\python.exe",
-  "idf.toolsPathWin": "c:\\Espressif\\",
+  "idf.toolsPathWin": "c:\\Espressif\\toolchain\\v5.4.1",
   "idf.flashType": "UART",
   "files.associations": {
     "array": "cpp",
@@ -23,6 +23,8 @@
     "span": "cpp",
     "regex": "cpp",
     "cstdint": "cpp",
-    "compare": "cpp"
-  }
+    "compare": "cpp",
+    "cstddef": "cpp"
+  },
+  "idf.pythonInstallPath": "c:\\Espressif\\toolchain\\v5.4.1\\tools\\idf-python\\3.11.2\\python.exe"
 }

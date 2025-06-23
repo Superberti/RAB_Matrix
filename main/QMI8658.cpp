@@ -33,7 +33,7 @@ esp_err_t QMI8658::Init(i2c_master_bus_handle_t aBusHandle, uint8_t aI2CAddr, ui
   mBusHandle = aBusHandle;
   if (mDevHandle == NULL || ReInit)
   {
-    i2c_device_config_t conf;
+    i2c_device_config_t conf = {};
     conf.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     conf.device_address = aI2CAddr;
     conf.scl_speed_hz = aI2CSpeed_Hz;
@@ -1575,7 +1575,7 @@ esp_err_t QMI8658::EnableMotionDetect(IntPin pin)
   ret = SetRegisterBit(QMI8658_REG_CTRL8, 2);
   if (ret != ESP_OK)
     return ret;
-  return  SetRegisterBit(QMI8658_REG_CTRL8, 3);
+  return SetRegisterBit(QMI8658_REG_CTRL8, 3);
 }
 
 esp_err_t QMI8658::DisableMotionDetect()
@@ -1723,15 +1723,11 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[0] & 0x01)
   {
     result |= STATUS_INT_AVAIL;
-    // if (eventGyroDataReady)eventGyroDataReady();
-    // if (eventAccelDataReady)eventAccelDataReady();
   }
 
   // Locking Mechanism Can reading..
   if ((status[0] & 0x03) == 0x03)
   {
-    if (eventDataLocking)
-      eventDataLocking();
   }
 
   //=======================================
@@ -1744,8 +1740,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
     if (status[1] & 0x02)
     {
       result |= STATUS0_GYRO_DATA_READY;
-      if (eventGyroDataReady)
-        eventGyroDataReady();
       mgDataReady = true;
     }
     // Accelerometer new data available
@@ -1754,8 +1748,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
     if (status[1] & 0x01)
     {
       result |= STATUS0_ACCEL_DATA_READY;
-      if (eventAccelDataReady)
-        eventAccelDataReady();
       maDataReady = true;
     }
   }
@@ -1767,8 +1759,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x80)
   {
     result |= STATUS1_SIGNIFICANT_MOTION;
-    if (eventSignificantMotion)
-      eventSignificantMotion();
   }
   // No Motion
   // 0: No No-Motion was detected
@@ -1776,8 +1766,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x40)
   {
     result |= STATUS1_NO_MOTION;
-    if (eventNoMotionEvent)
-      eventNoMotionEvent();
   }
   // Any Motion
   // 0: No Any-Motion was detected
@@ -1785,8 +1773,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x20)
   {
     result |= STATUS1_ANY_MOTION;
-    if (eventAnyMotionEvent)
-      eventAnyMotionEvent();
   }
   // Pedometer
   // 0: No step was detected
@@ -1794,8 +1780,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x10)
   {
     result |= STATUS1_PEDOMETER_MOTION;
-    if (eventPedometerEvent)
-      eventPedometerEvent();
   }
   // WoM
   // 0: No WoM was detected
@@ -1803,8 +1787,6 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x04)
   {
     result |= STATUS1_WOM_MOTION;
-    if (eventWomEvent)
-      eventWomEvent();
   }
   // TAP
   // 0: No Tap was detected
@@ -1812,55 +1794,8 @@ uint16_t QMI8658::Update(esp_err_t *aErr)
   if (status[2] & 0x02)
   {
     result |= STATUS1_TAP_MOTION;
-    if (eventTagEvent)
-      eventTagEvent();
   }
   return result;
-}
-
-void QMI8658::SetWakeupMotionEventCallBack(EventCallBack_t cb)
-{
-  eventWomEvent = cb;
-}
-
-void QMI8658::SetTapEventCallBack(EventCallBack_t cb)
-{
-  eventTagEvent = cb;
-}
-
-void QMI8658::SetPedometerEventCallBack(EventCallBack_t cb)
-{
-  eventPedometerEvent = cb;
-}
-
-void QMI8658::SetNoMotionEventCallBack(EventCallBack_t cb)
-{
-  eventNoMotionEvent = cb;
-}
-
-void QMI8658::SetAnyMotionEventCallBack(EventCallBack_t cb)
-{
-  eventAnyMotionEvent = cb;
-}
-
-void QMI8658::SetSignificantMotionEventCallBack(EventCallBack_t cb)
-{
-  eventSignificantMotion = cb;
-}
-
-void QMI8658::SetGyroDataReadyCallBack(EventCallBack_t cb)
-{
-  eventGyroDataReady = cb;
-}
-
-void QMI8658::SetAccelDataReadyEventCallBack(EventCallBack_t cb)
-{
-  eventAccelDataReady = cb;
-}
-
-void QMI8658::SetDataLockingEventCallBack(EventCallBack_t cb)
-{
-  eventDataLocking = cb;
 }
 
 esp_err_t QMI8658::Calibration(uint16_t *gX_gain, uint16_t *gY_gain, uint16_t *gZ_gain)
