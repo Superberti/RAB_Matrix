@@ -29,6 +29,8 @@
 #include <led_strip.h>
 #include "QMI8658.h"
 #include "fonts_8x8.h"
+#include "SimpleKalmanFilter.h"
+#include "Effects.h"
 
 #define FONT8X8 font8x8_ic8x8u
 
@@ -73,10 +75,20 @@ void app_main_cpp()
   m.Run();
 }
 
-LEDMatrix::LEDMatrix()
+LEDMatrix::LEDMatrix() 
 {
+  Qmi=NULL;
+  MyRainbower=NULL;
   i2c_bus_h_0 = NULL;
   Qmi = new QMI8658();
+  pixelColor_t StartColor = pixelFromRGB(255, 0, 0);
+  MyRainbower = new Rainbower(StartColor, 2);
+}
+
+LEDMatrix::~LEDMatrix()
+{
+  delete Qmi;
+  delete MyRainbower;
 }
 
 void LEDMatrix::Run()
@@ -228,8 +240,12 @@ void LEDMatrix::Run()
   IMUdata Accel;
   IMUdata Gyro;
   ESP_LOGI(TAG, "Hauptschleife...");
-  const char *Anzeige = "Hallo, RAB *2025*";
-  int CharIndex = 0;
+  uint8_t ClipBuffer[8];
+  TextBitmap RABText("Hallo, das ist *RAB 2025*");
+  int xOffset = 0;
+  int yOffset = 0;
+  xOffset = RABText.Width();
+
   for (;;)
   {
     /*
@@ -242,39 +258,39 @@ void LEDMatrix::Run()
       led_strip_set_pixel(led_strip, i, 50, 50, 50);
       led_strip_refresh(led_strip);
       vTaskDelay(pdMS_TO_TICKS(10));
-    }*/
+    }
     if (Anzeige[CharIndex] == 0)
       CharIndex = 0;
     RenderChar(Anzeige[CharIndex], 30, 30, 30);
-    CharIndex++;
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    CharIndex++;*/
+    RABText.GetClip(xOffset, yOffset, true, ClipBuffer);
 
-    if (QMI_OK && Qmi->GetDataReady())
-    {
-      ret = Qmi->GetAccelerometer(Accel.x, Accel.y, Accel.z);
-      if (ret == ESP_OK)
-      {
-        ESP_LOGI(TAG, "ACCEL:  %f  %f  %f\r\n", Accel.x, Accel.y, Accel.z);
-      }
-      else
-        ESP_LOGE(TAG, "GetAccelerometer failed with error code: %d", ret);
+    RenderChar(ClipBuffer, 20, 20, 20);
+    xOffset--;
+    if (xOffset < -8)
+      xOffset = RABText.Width();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    /*
+        if (QMI_OK && Qmi->GetDataReady())
+        {
+          ret = Qmi->GetAccelerometer(Accel.x, Accel.y, Accel.z);
+          if (ret == ESP_OK)
+          {
+            ESP_LOGI(TAG, "ACCEL:  %f  %f  %f\r\n", Accel.x, Accel.y, Accel.z);
+          }
+          else
+            ESP_LOGE(TAG, "GetAccelerometer failed with error code: %d", ret);
 
-      ret = Qmi->GetGyroscope(Gyro.x, Gyro.y, Gyro.z);
-      if (ret == ESP_OK)
-      {
-        ESP_LOGI(TAG, "GYRO:  %f  %f  %f", Gyro.x, Gyro.y, Gyro.z);
-      }
-      else
-        ESP_LOGE(TAG, "GetGyroscope failed with error code: %d", ret);
-      ESP_LOGI(TAG, "\t\t>      %lu   %.2f ℃", Qmi->GetTimestamp(), Qmi->GetTemperature_C());
-    }
-
+          ret = Qmi->GetGyroscope(Gyro.x, Gyro.y, Gyro.z);
+          if (ret == ESP_OK)
+          {
+            ESP_LOGI(TAG, "GYRO:  %f  %f  %f", Gyro.x, Gyro.y, Gyro.z);
+          }
+          else
+            ESP_LOGE(TAG, "GetGyroscope failed with error code: %d", ret);
+          ESP_LOGI(TAG, "\t\t>      %lu   %.2f ℃", Qmi->GetTimestamp(), Qmi->GetTemperature_C());
+        }*/
   }
-}
-
-LEDMatrix::~LEDMatrix()
-{
-  delete Qmi;
 }
 
 esp_err_t LEDMatrix::InitGPIO()
@@ -310,7 +326,7 @@ esp_err_t LEDMatrix::InitI2C(i2c_port_t aPort, gpio_num_t aSDA_Pin, gpio_num_t a
   if (aPort > 1)
     return ESP_ERR_INVALID_ARG;
 
-  i2c_master_bus_config_t conf={};
+  i2c_master_bus_config_t conf = {};
   conf.i2c_port = aPort;
   conf.sda_io_num = aSDA_Pin;
   conf.scl_io_num = aSCL_Pin;
@@ -402,23 +418,98 @@ void LEDMatrix::rotateChar270(const uint8_t *image, uint8_t newb[8])
 
 void LEDMatrix::RenderChar(char aChar, uint8_t r, uint8_t g, uint8_t b)
 {
-  led_strip_clear(led_strip);
   const uint8_t *CharBitmap = getImage(aChar);
   for (uint8_t x = 0; x < 8; x++)
   {
     for (uint8_t y = 0; y < 8; y++)
     {
-      if (((const uint8_t *)CharBitmap)[x] & (1 << (7 - y)))
-        SetMatrixPixel(7 - x, 7 - y, r, g, b);
+      bool set = ((const uint8_t *)CharBitmap)[x] & (1 << (7 - y));
+      SetMatrixPixel(7 - x, 7 - y, r, g, b, set);
     }
   }
   led_strip_refresh(led_strip);
 }
 
-void LEDMatrix::SetMatrixPixel(uint8_t x, uint8_t y, uint8_t r, uint8_t g, uint8_t b)
+void LEDMatrix::RenderChar(uint8_t aChar[8], uint8_t r, uint8_t g, uint8_t b)
+{
+  for (uint8_t x = 0; x < 8; x++)
+  {
+    for (uint8_t y = 0; y < 8; y++)
+    {
+      bool set = ((const uint8_t *)aChar)[x] & (1 << (7 - y));
+      pixelColor_t NextColor = MyRainbower->DrawNext();
+      SetMatrixPixel(7 - x, 7 - y, NextColor.r / 8, NextColor.g / 8, NextColor.b / 8, set);
+    }
+  }
+  led_strip_refresh(led_strip);
+}
+
+void LEDMatrix::SetMatrixPixel(uint8_t x, uint8_t y, uint8_t r, uint8_t g, uint8_t b, bool aSet)
 {
   if (x >= 8 || y >= 8)
     return;
   uint32_t LEDIndex = x * 8 + y;
-  led_strip_set_pixel(led_strip, LEDIndex, r, g, b);
+  if (aSet)
+    led_strip_set_pixel(led_strip, LEDIndex, r, g, b);
+  else
+    led_strip_set_pixel(led_strip, LEDIndex, 0, 0, 0);
+}
+
+TextBitmap::TextBitmap(const std::string &aText)
+    : mTextBitmap(NULL), mWidth(aText.length() * 8), mStride(aText.length())
+{
+  mText = aText;
+  mTextBitmap = new uint8_t[mWidth];
+  for (int i = 0; i < aText.length(); i++)
+  {
+    const uint8_t *CharBitmap = LEDMatrix::getImage(mText[mText.length() - i - 1]);
+    for (short y = 0; y < mHeight; y++)
+    {
+      mTextBitmap[y * mStride + i] = CharBitmap[y];
+    }
+  }
+}
+
+TextBitmap::~TextBitmap()
+{
+  delete[] mTextBitmap;
+}
+
+#define SET_BIT(byte, bit) ((byte) |= (1UL << (bit)))
+#define CLEAR_BIT(byte, bit) ((byte) &= ~(1UL << (bit)))
+#define IS_SET(byte, bit) (((byte) & (1UL << (bit))) >> (bit))
+
+bool TextBitmap::GetPixel(uint8_t x, uint8_t y)
+{
+  if (x >= mWidth || y >= 8)
+    return false;
+  uint8_t index = y * mStride + (x / 8);
+  return IS_SET(mTextBitmap[index], x % 8);
+}
+
+void TextBitmap::SetPixel(uint8_t x, uint8_t y, bool aSet)
+{
+  if (x >= mWidth || y >= 8)
+    return;
+  uint8_t index = y * mStride + (x / 8);
+  if (aSet)
+    SET_BIT(mTextBitmap[index], x % 8);
+  else
+    CLEAR_BIT(mTextBitmap[index], x % 8);
+}
+
+void TextBitmap::GetClip(int16_t aLeft, int16_t aTop, bool aFillWhite, uint8_t aClipBuffer[8])
+{
+  bool set = false;
+  for (int8_t y = 0; y < 8; y++)
+  {
+    for (int8_t x = 0; x < 8; x++)
+    {
+      set = GetPixel(x + aLeft, y + aTop);
+      if (set)
+        SET_BIT(aClipBuffer[y], x % 8);
+      else
+        CLEAR_BIT(aClipBuffer[y], x % 8);
+    }
+  }
 }
